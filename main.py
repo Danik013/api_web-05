@@ -1,116 +1,117 @@
 import os
+import time
 import requests
 from terminaltables import AsciiTable
 from dotenv import load_dotenv
 
 
+HH_API_CONSTANTS = {
+    "area_moscow": "1",
+    "profession_programmer": "96",
+    "search_perion_days": "30",
+    "vacancies_per_page": "20",
+}
+SJ_API_CONSTANTS = {
+    "area_moscow": 4,
+    "profession_programmer": 48,
+    "alltime_search": 0,
+    "vacancies_per_page": 20,
+}
+
+
 def predict_salary(salary_from, salary_to):
-    if (salary_from == 0 or salary_from is None) and (salary_to == 0 or salary_to is None):
-        return None
-    if salary_from == 0 or salary_from is None:
-        return salary_to * 0.8
-    if salary_to == 0 or salary_to is None:
+    if salary_from and salary_to:
+        return (salary_from + salary_to) / 2
+    if salary_from:
         return salary_from * 1.2
-
-    return (salary_from + salary_to) / 2
-
-
-def predict_rub_salary_hh(vacancy):
-    if vacancy["salary"]["currency"] == 'RUR':
-        salary_from = vacancy["salary"]["from"]
-        salary_to = vacancy["salary"]["to"]
-        average_salary = predict_salary(salary_from, salary_to)
-        return average_salary
-
-    return None
+    if salary_to:
+        return salary_to * 0.8
 
 
 def get_hh_salary_statistics(programming_language):
     page_number = 0
     total_salary = 0
-    count_salary = 0
+    salary_count = 0
 
     while True:
         url = "https://api.hh.ru/vacancies"
         params = {
-            "area": "1",
+            "area": HH_API_CONSTANTS["area_moscow"],
             "text": programming_language,
-            "professional_role": "96",
-            "period": "30",
+            "professional_role": HH_API_CONSTANTS["profession_programmer"],
+            "period": HH_API_CONSTANTS["search_perion_days"],
             "page": f"{page_number}",
-            "per_page": "20",
-            "only_with_salary": "true",
+            "per_page": HH_API_CONSTANTS["vacancies_per_page"],
         }
 
         response = requests.get(url, params=params)
         response.raise_for_status()
+        time.sleep(0.5)
+        api_hh_response = response.json()
 
-        for vacancy in response.json()["items"]:
-            expected_salary = predict_rub_salary_hh(vacancy)
-            if expected_salary is None:
+        for vacancy in api_hh_response["items"]:
+            if not vacancy["salary"] or vacancy["salary"]["currency"] != "RUR":
                 continue
+            expected_salary = predict_salary(vacancy["salary"]["from"], vacancy["salary"]["to"])
             total_salary += expected_salary
-            count_salary += 1
+            salary_count += 1
 
-        vacancy_statistics = {
-            "vacancies_found": response.json()["found"],
-            "vacancies_processed": count_salary,
-            "average_salary": int(total_salary / count_salary),
-        }
-        if page_number >= response.json()["pages"]:
+        if page_number >= api_hh_response["pages"]:
             break
-
         page_number +=1
 
+        try:
+            vacancy_statistics = {
+                "vacancies_found": api_hh_response["found"],
+                "vacancies_processed": salary_count,
+                "average_salary": int(total_salary / salary_count),
+            }
+        except ZeroDivisionError:
+            continue
+
     return vacancy_statistics
-
-
-def predict_rub_salary_sj(vacancy):
-    if vacancy["currency"] == 'rub':
-        salary_from = vacancy["payment_from"]
-        salary_to = vacancy["payment_to"]
-        average_salary = predict_salary(salary_from, salary_to)
-        return average_salary
-
-    return None
 
 
 def get_sj_salary_statistics(programing_language, superjob_api_token):
     page_number = 0
     total_salary = 0
-    count_salary = 0
+    salary_count = 0
 
     while True:
         url = "https://api.superjob.ru/2.0/vacancies/"
         params = {
-            "period": 0,
+            "period": SJ_API_CONSTANTS["alltime_search"],
             "keywords": programing_language,
-            "catalogues": 48,
-            "town": 4,
-            "count": 20,
+            "catalogues": SJ_API_CONSTANTS["profession_programmer"],
+            "town": SJ_API_CONSTANTS["area_moscow"],
+            "count": SJ_API_CONSTANTS["vacancies_per_page"],
             "page": page_number,
         }
         headers = {"X-Api-App-Id": superjob_api_token}
 
         response = requests.get(url, headers=headers, params=params)
         response.raise_for_status()
+        api_sj_response = response.json()
 
-        for vacancy in response.json()["objects"]:
-            if vacancy["currency"] == 'rub':
-                expected_salary = predict_rub_salary_sj(vacancy)
-                if expected_salary is None:
-                    continue
-                total_salary += expected_salary
-                count_salary += 1
+        for vacancy in api_sj_response["objects"]:
+            if vacancy["currency"] != 'rub':
+                continue
+            expected_salary = predict_salary(vacancy["payment_from"], vacancy["payment_to"])
+            if not expected_salary:
+                continue
+            total_salary += expected_salary
+            salary_count += 1
 
-        if total_salary == 0 or count_salary == 0:
-            return None
-        vacancy_statistics_sj = {
-            "vacancies_found": response.json()["total"],
-            "vacancies_processed": count_salary,
-            "average_salary": int(total_salary / count_salary),
-        }
-        if not response.json()["more"]:
+        try:
+            vacancy_statistics_sj = {
+                "vacancies_found": api_sj_response["total"],
+                "vacancies_processed": salary_count,
+                "average_salary": int(total_salary / salary_count),
+            }
+        except ZeroDivisionError:
+            return
+
+        if not api_sj_response["more"]:
             break
 
         page_number += 1
@@ -156,14 +157,15 @@ def main():
 
     salary_analysis_hh = {}
     salary_analysis_sj = {}
+    title_hh = "HeadHunter Moscow"
+    title_sj = "SuperJob Moscow"
 
     for programming_language in programming_languages:
-        title_hh = "HeadHunter Moscow"
         salary_analysis_hh[programming_language] = get_hh_salary_statistics(programming_language)
 
-        title_sj = "SuperJob Moscow"
-        if get_sj_salary_statistics(programming_language, superjob_api_token):
-            salary_analysis_sj[programming_language] = get_sj_salary_statistics(programming_language, superjob_api_token)
+        vacancy_statistics_sj = get_sj_salary_statistics(programming_language, superjob_api_token)
+        if vacancy_statistics_sj:
+            salary_analysis_sj[programming_language] = vacancy_statistics_sj
         else:
             continue
 
