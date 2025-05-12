@@ -5,18 +5,12 @@ from terminaltables import AsciiTable
 from dotenv import load_dotenv
 
 
-HH_API_CONSTANTS = {
-    "area_moscow": "1",
-    "profession_programmer": "96",
-    "search_perion_days": "30",
-    "vacancies_per_page": "20",
-}
-SJ_API_CONSTANTS = {
-    "area_moscow": 4,
-    "profession_programmer": 48,
-    "alltime_search": 0,
-    "vacancies_per_page": 20,
-}
+HH_AREA_MOSCOW = "1"
+HH_PROFESSION_PROGRAMMER = "96"
+
+SJ_AREA_MOSCOW = 4
+SJ_PROFESSION_PROGRAMMER = 48
+SJ_ALLTIME_SEARCH = 0
 
 
 def predict_salary(salary_from, salary_to):
@@ -36,12 +30,12 @@ def get_hh_salary_statistics(programming_language):
     while True:
         url = "https://api.hh.ru/vacancies"
         params = {
-            "area": HH_API_CONSTANTS["area_moscow"],
+            "area": HH_AREA_MOSCOW,
             "text": programming_language,
-            "professional_role": HH_API_CONSTANTS["profession_programmer"],
-            "period": HH_API_CONSTANTS["search_perion_days"],
+            "professional_role": HH_PROFESSION_PROGRAMMER,
+            "period": "30",
             "page": f"{page_number}",
-            "per_page": HH_API_CONSTANTS["vacancies_per_page"],
+            "per_page": "20",
         }
 
         response = requests.get(url, params=params)
@@ -67,8 +61,11 @@ def get_hh_salary_statistics(programming_language):
                 "average_salary": int(total_salary / salary_count),
             }
         except ZeroDivisionError:
-            continue
-
+            vacancy_statistics = {
+                "vacancies_found": api_hh_response["found"],
+                "vacancies_processed": 0,
+                "average_salary": 0,
+            }
     return vacancy_statistics
 
 
@@ -80,11 +77,11 @@ def get_sj_salary_statistics(programing_language, superjob_api_token):
     while True:
         url = "https://api.superjob.ru/2.0/vacancies/"
         params = {
-            "period": SJ_API_CONSTANTS["alltime_search"],
+            "period": SJ_ALLTIME_SEARCH,
             "keywords": programing_language,
-            "catalogues": SJ_API_CONSTANTS["profession_programmer"],
-            "town": SJ_API_CONSTANTS["area_moscow"],
-            "count": SJ_API_CONSTANTS["vacancies_per_page"],
+            "catalogues": SJ_PROFESSION_PROGRAMMER,
+            "town": SJ_AREA_MOSCOW,
+            "count": 20,
             "page": page_number,
         }
         headers = {"X-Api-App-Id": superjob_api_token}
@@ -109,7 +106,11 @@ def get_sj_salary_statistics(programing_language, superjob_api_token):
                 "average_salary": int(total_salary / salary_count),
             }
         except ZeroDivisionError:
-            return
+            vacancy_statistics_sj = {
+                "vacancies_found": api_sj_response["total"],
+                "vacancies_processed": 0,
+                "average_salary": 0,
+            }
 
         if not api_sj_response["more"]:
             break
@@ -163,11 +164,7 @@ def main():
     for programming_language in programming_languages:
         salary_analysis_hh[programming_language] = get_hh_salary_statistics(programming_language)
 
-        vacancy_statistics_sj = get_sj_salary_statistics(programming_language, superjob_api_token)
-        if vacancy_statistics_sj:
-            salary_analysis_sj[programming_language] = vacancy_statistics_sj
-        else:
-            continue
+        salary_analysis_sj[programming_language] = get_sj_salary_statistics(programming_language, superjob_api_token)
 
     print(get_table(salary_analysis_hh, title_hh))
     print()
