@@ -54,19 +54,16 @@ def get_hh_salary_statistics(programming_language):
             break
         page_number +=1
 
-        try:
-            vacancy_statistics = {
-                "vacancies_found": api_hh_response["found"],
-                "vacancies_processed": salary_count,
-                "average_salary": int(total_salary / salary_count),
-            }
-        except ZeroDivisionError:
-            vacancy_statistics = {
-                "vacancies_found": api_hh_response["found"],
-                "vacancies_processed": 0,
-                "average_salary": 0,
-            }
-    return vacancy_statistics
+    try:
+        average_salary = int(total_salary / salary_count)
+    except ZeroDivisionError:
+        average_salary = 0
+
+    return {
+        "vacancies_found": api_hh_response["found"],
+        "vacancies_processed": salary_count,
+        "average_salary": average_salary,
+    }
 
 
 def get_sj_salary_statistics(programing_language, superjob_api_token):
@@ -99,26 +96,21 @@ def get_sj_salary_statistics(programing_language, superjob_api_token):
             total_salary += expected_salary
             salary_count += 1
 
-        try:
-            vacancy_statistics_sj = {
-                "vacancies_found": api_sj_response["total"],
-                "vacancies_processed": salary_count,
-                "average_salary": int(total_salary / salary_count),
-            }
-        except ZeroDivisionError:
-            vacancy_statistics_sj = {
-                "vacancies_found": api_sj_response["total"],
-                "vacancies_processed": 0,
-                "average_salary": 0,
-            }
-
         if not api_sj_response["more"]:
             break
 
         page_number += 1
 
-    return vacancy_statistics_sj
+    try:
+        average_salary = int(total_salary / salary_count)
+    except ZeroDivisionError:
+        average_salary = 0
 
+    return {
+        "vacancies_found": api_sj_response["total"],
+        "vacancies_processed": salary_count,
+        "average_salary": average_salary,
+    }
 
 def get_table(salary_analysis, title):
     column_names = [
